@@ -7,7 +7,7 @@ private
 
 public force_calculator
 public force_potential_calculator
-public force_gradforce_calculator
+
 
 
 contains
@@ -67,34 +67,6 @@ subroutine force_potential_calculator(rm,bondingEnergy,x,f,potential)
 end subroutine
 
 
-
-subroutine force_gradforce_calculator(rm,bondingEnergy,x,f,gf)
-
-	real*16, intent(in) :: 	  rm, bondingEnergy, x(:,:)
-	real*16, intent(inout) :: f(:,:), gf(:,:,:)
-	real*16 ::		  dx(size(x,1),size(x,1),3), distance(size(x,1),size(x,1)), distancesq(size(x,1),size(x,1)), dxdx(size(x,1),size(x,1),3,3)
-	integer ::		  i, j
-	
-	do i=1,size(x,1)
-		do j=1,3
-			dx(i,i,j) = 0
-		end do
-		distancesq(i,i) = 1
-		do j=i+1,size(x,1)
-			dx(i,j,:) = x(i,:) - x(j,:)
-			dx(j,i,:) = -dx(i,j,:)
-			distancesq(i,j) = dot_product(dx(i,j,:),dx(i,j,:))
-			distancesq(j,i) = distancesq(j,i)
-		end do
-		distance = sqrt(distancesq)
-		
-		f(i,:) = bondingEnergy * sum(dx(i,:,:))*(-2*rm*rm*rm*rm*rm*rm/(distancesq*distancesq*distancesq*distance)&
-			 + rm*rm*rm*rm*rm*rm*rm*rm*rm*rm*rm*rm/(distancesq*distancesq*distancesq*distancesq*distancesq*distancesq*distance))
-
-		gf(1,1,1) = bondingEnergy
-	end do
-
-end subroutine
 
 
 
