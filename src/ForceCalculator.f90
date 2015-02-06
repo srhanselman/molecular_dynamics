@@ -13,56 +13,65 @@ public force_potential_calculator
 contains
 
 
-subroutine force_calculator(rm,bondingEnergy,x,f)
+subroutine force_calculator(rm,bondingEnergy,maxForceDistance,L,x,f)
+	! One generally would not need to directly call this subroutine.
+	! rm is the potential minimum distance, bondingEnergy is the interaction depth,
+	! L is the box length, x contains the particle positions while f contains the
+	! force output.
 
 	integer ::		  i, j, N
-	real*16, intent(in) :: 	  rm, bondingEnergy, x(:,:)
-	real*16, intent(inout) :: f(:,:)
-	real*16 ::		  dx(size(x,1),size(x,1),3), distancesq(size(x,1),size(x,1))
+	real*8, intent(in) :: 	  rm, bondingEnergy, x(:,:), L, maxForceDistance
+	real*8, intent(out) ::    f(:,:)
+	real*8 ::		  dx(3), distancesq, fPair(3)
 
 	N = size(x,1)
-
+	f = 0
 	do i=1,N
-		do j=1,3
-			dx(i,i,j) = 0
-			distancesq(i,i) = 1
-		end do
 		do j=i+1,N
-			dx(i,j,:) = x(i,:) - x(j,:)
-			dx(j,i,:) = -dx(i,j,:)
-			distancesq(i,j) = dot_product(dx(i,j,:),dx(i,j,:))
-			distancesq(j,i) = distancesq(j,i)
+			dx = x(i,:) - x(j,:)
+			dx = dx-nint(dx/L)*L
+			distancesq = dot_product(dx,dx)
+			if (distancesq < maxForceDistance*maxForceDistance) then
+				distancesq = 1/distancesq
+				fPair =  12*bondingEnergy*dx*(rm**6*distancesq**4-rm**12*distancesq**7)
+				f(i,:) = f(i,:) + fPair
+				f(j,:) = f(j,:) - fPair
+			end if
 		end do
 	end do
-	f = 12*bondingEnergy*sum( dx*(rm**6/spread(distancesq**4,1,N)-rm**12/spread(distancesq**7,1,N)) , 2 )
+
 
 end subroutine
 
 
-subroutine force_potential_calculator(rm,bondingEnergy,x,f,potential)
+subroutine force_potential_calculator(rm,bondingEnergy,maxForceDistance,L,x,f,potential)
 
-	real*16, intent(in) :: 	  rm, bondingEnergy, x(:,:)
-	real*16, intent(inout) :: f(:,:)
-	real*16, intent(out) ::   potential(:)
-	real*16 ::		  dx(size(x,1),size(x,1),3), distance(size(x,1),size(x,1)), distancesq(size(x,1),size(x,1))
+	real*8, intent(in) :: 	  rm, bondingEnergy, x(:,:), L, maxForceDistance
+	real*8, intent(inout) ::  f(:,:)
+	real*8, intent(out) ::    potential(size(x,1))
+	real*8 ::		  dx(3), distancesq
+	real*8 ::                 fPair(3), potentialPair
 	integer ::		  i, j, N
 	
 	N = size(x,1)
 
 	do i=1,N
-		do j=1,3
-			dx(i,i,j) = 0
-			distancesq(i,i) = 1                              ! distancesq is the distance !squared!.
-		end do
 		do j=i+1,N
-			dx(i,j,:) = x(i,:) - x(j,:)
-			dx(j,i,:) = -dx(i,j,:)
-			distancesq(i,j) = dot_product(dx(i,j,:),dx(i,j,:))
-			distancesq(j,i) = distancesq(j,i)
+			dx = x(i,:) - x(j,:)
+			dx = dx-nint(dx/L)*L
+			distancesq = dot_product(dx,dx)
+			if (distancesq < maxForceDistance*maxForceDistance) then
+				distancesq = 1/distancesq
+				fPair =  12*bondingEnergy*dx*(rm**6*distancesq**4-rm**12*distancesq**7)
+				potentialPair = bondingEnergy*(2*rm**6*distancesq**3-rm**12*distancesq**6)
+				f(i,:) = f(i,:) + fPair
+				f(j,:) = f(j,:) - fPair
+				potential(i) = potential(i) + potentialPair
+				potential(j) = potential(j) + potentialPair
+			end if
 		end do
 	end do
-	f = 12*bondingEnergy*sum( dx*(rm**6/spread(distancesq**4,1,N)-rm**12/spread(distancesq**7,1,N)) , 2 )
-	potential = bondingEnergy*sum( -rm**6/(distancesq**3) + rm**12/(distancesq**6) , 2 )
+
 
 end subroutine
 
