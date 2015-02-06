@@ -21,7 +21,7 @@ public obtain_step_automatic_checks                  ! A lot slower, but automat
 contains
 
 subroutine obtain_step(x,p,f,L,maxForceDistance,rm,bondingEnergy,mass,timeStep,meanMomentumSq, &
- particleMomentumSq,particlePotential,kineticEnergyAfterStep,potentialEnergyAfterStep)
+ particleKineticEnergy,particlePotential,kineticEnergyAfterStep,potentialEnergyAfterStep)
 	! This function uses a simple velocity Verlet algorithm.
 	! Its arguments are as listed above; note that x, p, f are position, momentum
 	!    and force respectively, and L is the box length. outOfVelocityBounds 
@@ -34,12 +34,9 @@ subroutine obtain_step(x,p,f,L,maxForceDistance,rm,bondingEnergy,mass,timeStep,m
 	real*8, intent(in) ::    mass, timeStep, rm, bondingEnergy, L, maxForceDistance ! maxBeta is dimensionless, mass in kg, L in m, timeStep in s, momentumTolerance is dimensionless (# stddevs)
 	real*8, intent(inout) :: x(:,:), p(:,:), f(:,:)                              ! position, momentum and force vectors
 	real*8, intent(out) ::   kineticEnergyAfterStep, potentialEnergyAfterStep, &
- particleMomentumSq(size(x,1)), particlePotential(size(x,1))
+ particleKineticEnergy(size(x,1)), particlePotential(size(x,1))
 		! these flags signal clear divergences in individual and mean momentum
-	real*8 ::                lightSpeed, temperature, maxMomentum, meanMomentumSq, particleKineticEnergy(size(x,1))
-		! lightSpeed is in m/s, temperature in K, stddevsq in kg^2m^2s^-2, kB in J/K, maxMomentum in kgms^-1
-
-	lightSpeed = 299792458
+	real*8 ::                meanMomentumSq
 
 
         p = p + f*timeStep/2
@@ -49,7 +46,7 @@ subroutine obtain_step(x,p,f,L,maxForceDistance,rm,bondingEnergy,mass,timeStep,m
 	
 
 	meanMomentumSq = dot_product(sum(p(:,:),1),sum(p(:,:),1))                     ! sums over all particles BEFORE obtaining the modulus squared - see Changelog 2/4/2015
-	particleKineticEnergy = particleMomentumSq/(2*mass)
+	particleKineticEnergy = dot_product(p(i,:),p(i,:))/(2*mass)
 	kineticEnergyAfterStep = sum(particleKineticEnergy)
 	potentialEnergyAfterStep = sum(particlePotential)
 
