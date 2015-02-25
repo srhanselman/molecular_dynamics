@@ -22,16 +22,30 @@ use ForceCalculator
   real(8), allocatable :: particlePotential(:)
   real(8), allocatable :: correlation(:)
 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! A short explanation of the units: the goal is to have rm = mass = bondingEnergy
+!   = 1 (i.e. unitless). This means:
+! kg -> argon_mass (6.6335209d-26 kg);   m -> rm (3.81637096425d-10 m);
+! J = kg m²/s² -> bondingEnergy (1.65d-21 J);
+! s = sqrt(kg m²/J) -> sqrt(argon_mass rm²/bondingEnergy)
+! 
+! As temperature is not constant and there is no reference temperature, K survives
+! as a unit but is accompanied by kB, which changes:
+!
+! kB = 1 J/K = 1 (bondingEnergy/J)^-1 bondingEnergy/K = 1/1.65d-21 K^-1
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-  temp = 1d0		!Temperature is in K
-  mass = 6.6335209d-26		!Mass is in kg
-  lattice_constant = 4.0d-10    !Length is in m
-  timeStep = 1d-15 !Time is in s
-  rm = 3.81637096425d-10
+  temp = 1d0		!Temperature is in K (apart from kB, this is the sole exception)
+
+  mass = 1d0		!Mass is in argon_mass
+  rm = 1d0		!Length is in rm
+  bondingEnergy = 1d0   !Energy is in bondingEnergy
+  lattice_constant = 1*rm    !Length is in rm
   maxForceDistance = 5*rm
-  bondingEnergy = 1.65d-21 !Energy is in J
-  cell_dim = 10
-  dR = 4.0d-11
+  dR = 1d-1*rm
+  timeStep = 0.0004 !Time is in sqrt(argon_mass rm²/bondingEnergy) = 2.41980663d-12 s
+  cell_dim = 5 !This is the number of lattice spacings within the box
+
   
   N = 4*cell_dim**3
   box_length = cell_dim*lattice_constant
@@ -41,7 +55,7 @@ use ForceCalculator
   allocate( potential(N) )
   allocate( particleKineticEnergy(N) )
   allocate( particlePotential(N) )
-  allocate( correlation(ceiling(sqrt(3.)*box_length/(2*dR))+1) )
+  allocate( correlation(ceiling(dsqrt(3.0d0)*box_length/(2*dR))+1) )
 
   call init_random_seed()
   call position_initializer(N,cell_dim,pos)
@@ -141,11 +155,11 @@ subroutine momentum_initializer(temp, N, mass,momentum)
   integer :: N, counter
   real(8) :: p_x, p_y, p_z
   real(8), intent(out), dimension(N,3) :: momentum
-  kb = 1d0
+  kb = 1/1.65d-21
   p_x = 0d0
   p_y = 0d0
   p_z = 0d0
-  stand_dev = sqrt(kb*mass*temp)
+  stand_dev = dsqrt(kb*mass*temp)
   !---------------------------------------------------------------
   !initializing velocities of particles according to a Gaussian distribution
   do counter =1,N
@@ -190,7 +204,7 @@ subroutine get_gaussian_momentum(mass,stand_dev,x)
   pi = 4d0*atan(1.0d0)
   dx = stand_dev/10d0
   x= 0d0
-  prefactor = 1d0/(stand_dev)*sqrt(2d0*pi)
+  prefactor = 1d0/(stand_dev)*dsqrt(2d0*pi)
   do while (check == 0)
      call random_number(random_1)
      random_1 = random_1

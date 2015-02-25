@@ -20,7 +20,7 @@ subroutine calculate_temperature (particleKineticEnergy,meanMomentumSq,mass,temp
 	real*8, intent(out) ::  temperatureCalc
 	real*8 ::               kB
 
-	kB = 1.3806488d-23
+	kB = 1/1.65d-21
 	
 	temperatureCalc = 2*sum(particleKineticEnergy) - meanMomentumSq/mass
 	temperatureCalc = temperatureCalc/(3*kB*size(particleKineticEnergy))

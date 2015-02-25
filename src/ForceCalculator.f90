@@ -16,6 +16,8 @@ private
 
 public force_calculator
 public force_potential_calculator
+public force_calculator_correlation
+public force_potential_calculator_correlation
 
 
 contains
@@ -101,7 +103,7 @@ subroutine force_calculator_correlation(rm,bondingEnergy,maxForceDistance,L,x,f,
 	integer ::		  i, j, N
 	real*8, intent(in) :: 	  rm, bondingEnergy, x(:,:), L, maxForceDistance, dR
 	real*8, intent(inout) ::  f(:,:)
-	real*8, intent(out) ::    correlation(ceiling(sqrt(3.)*L/(2*dR))+1,2)
+	real*8, intent(out) ::    correlation(ceiling(sqrt(3.)*L/(2*dR))+1)
 	real*8 ::		  dx(3), distancesq, fPair(3)
 
 	N = size(x,1)
@@ -131,7 +133,7 @@ subroutine force_potential_calculator_correlation(rm,bondingEnergy,maxForceDista
 
 	real*8, intent(in) :: 	  rm, bondingEnergy, x(:,:), L, maxForceDistance, dR
 	real*8, intent(inout) ::  f(:,:)
-	real*8, intent(out) ::    potential(size(x,1)), correlation(ceiling(sqrt(3.)*L/(2*dr))+1,2)
+	real*8, intent(out) ::    potential(size(x,1)), correlation(ceiling(sqrt(3.)*L/(2*dr))+1)
 	real*8 ::		  dx(3), distancesq
 	real*8 ::                 fPair(3), potentialPair
 	integer ::		  i, j, N

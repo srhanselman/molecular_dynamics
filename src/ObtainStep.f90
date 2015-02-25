@@ -78,7 +78,7 @@ subroutine obtain_step_automatic_checks(x,p,f,L,maxBeta,momentumTolerance,mass,t
         real*8 ::  particleKineticEnergy(size(x,1))
         real*8 ::  meanMomentumSq  ! lightSpeed is in m/s, 
 !temperature in K, stddevsq in kg^2m^2s^-2, kB in J/K, maxMomentum in kgms^-1
-	kB = 1.3806488d-23
+	kB = 1/1.65d-21
 	temperature = 273
 	lightSpeed = 299792458
 
@@ -132,11 +132,12 @@ subroutine obtain_step_correlation(x,p,f,L,maxForceDistance,rm,bondingEnergy,mas
 	integer :: i                                                                  ! a plain old iterator
 	real*8, intent(in) ::    mass, timeStep, rm, bondingEnergy, L, maxForceDistance, dR
              ! maxBeta is dimensionless, mass in kg, L in m, timeStep in s, momentumTolerance is dimensionless (# stddevs)
-	real*8, intent(inout) :: x(:,:), p(:,:), f(:,:), correlation(:), particleKineticEnergy(size(x,1)), &
- particlePotential(size(x,1))           ! position, momentum and force vectors
-	real*8, intent(out) ::   kineticEnergyAfterStep, potentialEnergyAfterStep
+	real*8, intent(inout) :: x(:,:), p(:,:), f(:,:), correlation(:)
+           ! position, momentum and force vectors
+	real*8, intent(out) ::   kineticEnergyAfterStep, potentialEnergyAfterStep, particlePotential(size(x,1)), &
+ particleKineticEnergy(size(x,1)) 
 		! these flags signal clear divergences in individual and mean momentum
-	real*8 ::                meanMomentumSq
+	real*8 ::                meanMomentumSq, psq(size(x,1))
 
 
         p = p + f*timeStep/2
@@ -146,6 +147,7 @@ subroutine obtain_step_correlation(x,p,f,L,maxForceDistance,rm,bondingEnergy,mas
 	
 
 	meanMomentumSq = dot_product(sum(p(:,:),1),sum(p(:,:),1))                     ! sums over all particles BEFORE obtaining the modulus squared - see Changelog 2/4/2015
+	psq = dot_product(p(i,:),p(i,:))
 	particleKineticEnergy = dot_product(p(i,:),p(i,:))/(2*mass)
 	kineticEnergyAfterStep = sum(particleKineticEnergy)
 	potentialEnergyAfterStep = sum(particlePotential)
