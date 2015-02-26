@@ -8,7 +8,7 @@ use ObtainStep
 use ForceCalculator
 
   Implicit None
-  real(8):: temp
+  real(8):: temp, tempCalc, tempPre
   real(8):: mass
   integer ::cell_dim,N,counter
   real(8):: lattice_constant, box_length, maxForceDistance, rm, bondingEnergy
@@ -40,11 +40,11 @@ use ForceCalculator
   mass = 1d0		!Mass is in argon_mass
   rm = 1d0		!Length is in rm
   bondingEnergy = 1d0   !Energy is in bondingEnergy
-  lattice_constant = 1*rm    !Length is in rm
+  lattice_constant = dsqrt(2d0)*rm    !Length is in rm
   maxForceDistance = 5*rm
   dR = 1d-1*rm
-  timeStep = 0.0004 !Time is in sqrt(argon_mass rm²/bondingEnergy) = 2.41980663d-12 s
-  cell_dim = 5 !This is the number of lattice spacings within the box
+  timeStep = 0.0001 !Time is in sqrt(argon_mass rm²/bondingEnergy) = 2.41980663d-12 s
+  cell_dim = 6 !This is the number of lattice spacings within the box
 
   
   N = 4*cell_dim**3
@@ -60,19 +60,35 @@ use ForceCalculator
   call init_random_seed()
   call position_initializer(N,cell_dim,pos)
   pos = pos*lattice_constant
-  do counter=1,N
-     print *,counter, pos(counter,1),pos(counter,2),pos(counter,3)
-  end do
+ ! do counter=1,N
+  !   print *,counter, pos(counter,1),pos(counter,2),pos(counter,3)
+  !end do
   call momentum_initializer(temp,N,mass,momenta)
+  call momentum_balancer(momenta,N)
+  
   do counter=1,N
-     print *,counter, momenta(counter,1),momenta(counter,2),momenta(counter,3)
+    particleKineticEnergy(counter) = dot_product(momenta(counter,:),momenta(counter,:))/(2*mass)
+  end do
+  meanMomentumSq = dot_product(sum(momenta,1),sum(momenta,1))
+  call calculate_temperature(particleKineticEnergy,meanMomentumSq,mass,tempCalc)
+
+  do counter=1,N
+     print *, momenta(counter,1),";",momenta(counter,2),";",momenta(counter,3)
   end do
 
+
   call force_potential_calculator_correlation(rm,bondingEnergy,maxForceDistance,box_length,pos,force,potential,dR,correlation)
-  do counter=1,100
-    call obtain_step_correlation(pos,momenta,force,box_length,maxForceDistance,rm,bondingEnergy,mass,timeStep,meanMomentumSq, &
-    particleKineticEnergy,particlePotential,kineticEnergyAfterStep,potentialEnergyAfterStep,dR,correlation)
-    print *, counter, kineticEnergyAfterStep, potentialEnergyAfterStep
+  print *, "Start of simulation!"
+  print *, "Initial temperature: ", tempCalc
+  print *, "Step;KineticEnergy", "PotentialEnergy", "TotalEnergy", "CalculatedTemperature"
+  do counter=1,1000
+    
+    call verlet_eqs_of_motion_correlation(pos,momenta,force,box_length,maxForceDistance,rm,bondingEnergy,mass,timeStep, &
+    meanMomentumSq, particleKineticEnergy,particlePotential,kineticEnergyAfterStep,potentialEnergyAfterStep,dR,correlation)
+    call calculate_temperature(particleKineticEnergy,meanMomentumSq,mass,tempCalc)
+!    call momentum_balancer(momenta,N)
+    print *, counter, kineticEnergyAfterStep, potentialEnergyAfterStep, &
+ & kineticEnergyAfterStep+potentialEnergyAfterStep, tempCalc, meanMomentumSq
   end do
 
 end program
@@ -155,7 +171,9 @@ subroutine momentum_initializer(temp, N, mass,momentum)
   integer :: N, counter
   real(8) :: p_x, p_y, p_z
   real(8), intent(out), dimension(N,3) :: momentum
-  kb = 1/1.65d-21
+! Having a large kB greatly impacts get_gaussian_momentum performance,
+! so post-multiplying sqrt(kB) is just as effective.
+  kb = (1.3806488d-2)/(1.65d0)
   p_x = 0d0
   p_y = 0d0
   p_z = 0d0
@@ -186,10 +204,28 @@ subroutine momentum_initializer(temp, N, mass,momentum)
      p_y = p_y + momentum(counter,2)
      p_z = p_z + momentum(counter,3)
   end do
+
   print *,p_x,p_y,p_z
   !---------------------------------------------------------------
   return
 end subroutine momentum_initializer
+
+subroutine momentum_balancer(p,N)
+
+  integer, intent(in) :: N
+  real(8), intent(inout) :: p(N,3)
+  real(8)                :: meanP(3)
+  integer(8)             :: i
+
+  meanP = sum(p,1)
+  meanP = meanP/size(p,1)
+  do i=1,size(p,1)
+      p(i,:) = p(i,:) - meanP
+  end do
+
+end subroutine momentum_balancer
+  
+	
 
 subroutine get_gaussian_momentum(mass,stand_dev,x)
 
@@ -199,6 +235,8 @@ subroutine get_gaussian_momentum(mass,stand_dev,x)
 
   real(8) :: random_1,random_y, I, x_integ, dx, pi, prefactor, y, test
   integer :: counter, check
+
+
   x = 3.0d0  
   check = 0
   pi = 4d0*atan(1.0d0)
@@ -206,6 +244,7 @@ subroutine get_gaussian_momentum(mass,stand_dev,x)
   x= 0d0
   prefactor = 1d0/(stand_dev)*dsqrt(2d0*pi)
   do while (check == 0)
+!	print *, "Part of a run\n"
      call random_number(random_1)
      random_1 = random_1
      x_integ = -10d0*stand_dev

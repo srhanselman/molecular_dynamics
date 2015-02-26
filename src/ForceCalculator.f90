@@ -132,14 +132,16 @@ end subroutine
 subroutine force_potential_calculator_correlation(rm,bondingEnergy,maxForceDistance,L,x,f,potential,dR,correlation)
 
 	real*8, intent(in) :: 	  rm, bondingEnergy, x(:,:), L, maxForceDistance, dR
-	real*8, intent(inout) ::  f(:,:)
-	real*8, intent(out) ::    potential(size(x,1)), correlation(ceiling(sqrt(3.)*L/(2*dr))+1)
+	real*8, intent(inout) ::  correlation(:)
+	real*8, intent(out) ::    f(:,:)
+	real*8, intent(out) ::    potential(size(x,1))
 	real*8 ::		  dx(3), distancesq
 	real*8 ::                 fPair(3), potentialPair
 	integer ::		  i, j, N
 	
 	N = size(x,1)
-	correlation = 0
+	f = 0
+	potential = 0
 
 	do i=1,N
 		do j=i+1,N
@@ -149,8 +151,8 @@ subroutine force_potential_calculator_correlation(rm,bondingEnergy,maxForceDista
 			call correlation_function_scalar(distancesq,dR,L,correlation)
 			if (distancesq < maxForceDistance*maxForceDistance) then
 				distancesq = 1/distancesq
-				fPair =  12*bondingEnergy*dx*(rm**6*distancesq**4-rm**12*distancesq**7)
-				potentialPair = bondingEnergy*(2*rm**6*distancesq**3-rm**12*distancesq**6)
+				fPair =  12*bondingEnergy*dx*(-rm**6*distancesq**4+rm**12*distancesq**7)
+				potentialPair = bondingEnergy*(-2*rm**6*distancesq**3+rm**12*distancesq**6)
 				f(i,:) = f(i,:) + fPair
 				f(j,:) = f(j,:) - fPair
 				potential(i) = potential(i) + potentialPair

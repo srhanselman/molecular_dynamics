@@ -20,10 +20,10 @@ subroutine calculate_temperature (particleKineticEnergy,meanMomentumSq,mass,temp
 	real*8, intent(out) ::  temperatureCalc
 	real*8 ::               kB
 
-	kB = 1/1.65d-21
+	kB = 1.3806488d-2/(1.65d0)
 	
-	temperatureCalc = 2*sum(particleKineticEnergy) - meanMomentumSq/mass
-	temperatureCalc = temperatureCalc/(3*kB*size(particleKineticEnergy))
+	temperatureCalc = 2*sum(particleKineticEnergy)/size(particleKineticEnergy)! - meanMomentumSq/mass
+	temperatureCalc = temperatureCalc/(3*kB)
 end subroutine
 
 subroutine calculate_pressure (x,f,L,pressure)

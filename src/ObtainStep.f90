@@ -13,14 +13,14 @@ use ForceCalculator
 implicit none
 private
 
-public obtain_step                                   ! Call this subroutine when energy is presumed to be stable.
-public obtain_step_automatic_checks                  ! A lot slower, but automatically sets warning flags for clear transgressions.
-public obtain_step_correlation			     ! Integrates correlation function calculation.
+public verlet_eqs_of_motion                          ! Call this subroutine when energy is presumed to be stable.
+public verlet_eqs_of_motion_checks                   ! A lot slower, but automatically sets warning flags for clear transgressions.
+public verlet_eqs_of_motion_correlation			     ! Integrates correlation function calculation.
 
 
 contains
 
-subroutine obtain_step(x,p,f,L,maxForceDistance,rm,bondingEnergy,mass,timeStep,meanMomentumSq, &
+subroutine verlet_eqs_of_motion(x,p,f,L,maxForceDistance,rm,bondingEnergy,mass,timeStep,meanMomentumSq, &
  particleKineticEnergy,particlePotential,kineticEnergyAfterStep,potentialEnergyAfterStep, &
  particleDistanceSq)
 	! This function uses a simple velocity Verlet algorithm.
@@ -59,7 +59,7 @@ end subroutine
 
 
 
-subroutine obtain_step_automatic_checks(x,p,f,L,maxBeta,momentumTolerance,mass,timeStep,outOfVelocityBounds, &
+subroutine verlet_eqs_of_motion_checks(x,p,f,L,maxBeta,momentumTolerance,mass,timeStep,outOfVelocityBounds, &
  kineticEnergyAfterStep,particleMomentumSq,initialKineticEnergy,particlePotential,potentialEnergyAfterStep, &
  energyTolerance,meanMomentumDiverged,rm,bondingEnergy,energyNotPreserved,maxForceDistance, particleDistanceSq)
 
@@ -119,7 +119,7 @@ end subroutine
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-subroutine obtain_step_correlation(x,p,f,L,maxForceDistance,rm,bondingEnergy,mass,timeStep,meanMomentumSq, &
+subroutine verlet_eqs_of_motion_correlation(x,p,f,L,maxForceDistance,rm,bondingEnergy,mass,timeStep,meanMomentumSq, &
  particleKineticEnergy,particlePotential,kineticEnergyAfterStep,potentialEnergyAfterStep,dR,correlation)
 	! This function uses a simple velocity Verlet algorithm.
 	! Its arguments are as listed above; note that x, p, f are position, momentum
@@ -140,9 +140,9 @@ subroutine obtain_step_correlation(x,p,f,L,maxForceDistance,rm,bondingEnergy,mas
 	real*8 ::                meanMomentumSq, psq(size(x,1))
 
 
-        p = p + f*timeStep/2
+        p = p + f*timeStep/(2*mass)
 	x = modulo(x+p*timeStep/mass,L)
-	call force_calculator_correlation(rm,bondingEnergy,maxForceDistance,L,x,f,dR,correlation)
+	call force_potential_calculator_correlation(rm,bondingEnergy,maxForceDistance,L,x,f,particlePotential,dR,correlation)
 	p = p + f * timeStep/(2*mass)
 	
 
