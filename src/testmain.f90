@@ -43,8 +43,9 @@ use ForceCalculator
   lattice_constant = dsqrt(2d0)*rm    !Length is in rm
   maxForceDistance = 5*rm
   dR = 1d-1*rm
-  timeStep = 0.0001 !Time is in sqrt(argon_mass rm²/bondingEnergy) = 2.41980663d-12 s
-  cell_dim = 6 !This is the number of lattice spacings within the box
+  timeStep = 0.0004 !Time is in sqrt(argon_mass rm²/bondingEnergy) = 2.41980663d-12 s
+  cell_dim = 6 !This is the number of lattice spacings within the box;
+               !the number of particles (N) is 4/uc times cell_dim translational copies
 
   
   N = 4*cell_dim**3
@@ -69,12 +70,14 @@ use ForceCalculator
   do counter=1,N
     particleKineticEnergy(counter) = dot_product(momenta(counter,:),momenta(counter,:))/(2*mass)
   end do
+  print *, sum(particleKineticEnergy)*mass/N
   meanMomentumSq = dot_product(sum(momenta,1),sum(momenta,1))
+  print *, meanMomentumSq
   call calculate_temperature(particleKineticEnergy,meanMomentumSq,mass,tempCalc)
 
-  do counter=1,N
-     print *, momenta(counter,1),";",momenta(counter,2),";",momenta(counter,3)
-  end do
+!  do counter=1,N
+!     print *, momenta(counter,1),";",momenta(counter,2),";",momenta(counter,3)
+!  end do
 
 
   call force_potential_calculator_correlation(rm,bondingEnergy,maxForceDistance,box_length,pos,force,potential,dR,correlation)
@@ -86,7 +89,7 @@ use ForceCalculator
     call verlet_eqs_of_motion_correlation(pos,momenta,force,box_length,maxForceDistance,rm,bondingEnergy,mass,timeStep, &
     meanMomentumSq, particleKineticEnergy,particlePotential,kineticEnergyAfterStep,potentialEnergyAfterStep,dR,correlation)
     call calculate_temperature(particleKineticEnergy,meanMomentumSq,mass,tempCalc)
-!    call momentum_balancer(momenta,N)
+    call momentum_balancer(momenta,N)
     print *, counter, kineticEnergyAfterStep, potentialEnergyAfterStep, &
  & kineticEnergyAfterStep+potentialEnergyAfterStep, tempCalc, meanMomentumSq
   end do
@@ -115,7 +118,7 @@ subroutine init_random_seed()
         call date_and_time(values=dt)
         tms = (dt(1) - 1970)*365_8 * 24 * 60 * 60 * 1000 &
              + dt(2) * 31_8 * 24 * 60 * 60 * 1000 &
-             + dt(3) * 24 * 60 * 60 * 60 * 1000 &
+             + dt(3) * 24 * 60 * 60 * 1000 &
              + dt(5) * 60 * 60 * 1000 &
              + dt(6) * 60 * 1000 + dt(7) * 1000 &
              + dt(8)
@@ -168,12 +171,12 @@ end subroutine position_initializer
 
 subroutine momentum_initializer(temp, N, mass,momentum)
   real(8) :: temp, mass, stand_dev, kb
-  integer :: N, counter
-  real(8) :: p_x, p_y, p_z
+  integer :: counter
+  integer, intent(in) :: N
+  real(8) :: p_x, p_y, p_z, pxvar(N), pyvar(N), pzvar(N), conversion
   real(8), intent(out), dimension(N,3) :: momentum
-! Having a large kB greatly impacts get_gaussian_momentum performance,
-! so post-multiplying sqrt(kB) is just as effective.
-  kb = (1.3806488d-2)/(1.65d0)
+
+  kb = 1.3806488d-2/1.65d0
   p_x = 0d0
   p_y = 0d0
   p_z = 0d0
@@ -181,14 +184,18 @@ subroutine momentum_initializer(temp, N, mass,momentum)
   !---------------------------------------------------------------
   !initializing velocities of particles according to a Gaussian distribution
   do counter =1,N
-     call get_gaussian_momentum(mass,stand_dev,momentum(counter,1))
-     call get_gaussian_momentum(mass,stand_dev,momentum(counter,2))
-     call get_gaussian_momentum(mass,stand_dev,momentum(counter,3))
+     call get_gaussian_momentum(mass,1d0,momentum(counter,1))
+     call get_gaussian_momentum(mass,1d0,momentum(counter,2))
+     call get_gaussian_momentum(mass,1d0,momentum(counter,3))
   end do
   !---------------------------------------------------------------
+  !SRH: applying the standard deviation to the momenta - for some reason
+  !the Gaussian RNG algorithm does not give any useful standard deviations!
   !---------------------------------------------------------------
   !finds total momentum in each direction and reduces to get closer to 0
+  
   do counter=1,N
+     print *,momentum(counter,1), "*", momentum(counter,2), "*", momentum(counter,3)
      p_x = p_x + momentum(counter,1)
      p_y = p_y + momentum(counter,2)
      p_z = p_z + momentum(counter,3)
@@ -196,16 +203,25 @@ subroutine momentum_initializer(temp, N, mass,momentum)
   momentum(:,1) = momentum(:,1) - p_x/N
   momentum(:,2) = momentum(:,2) - p_y/N
   momentum(:,3) = momentum(:,3) - p_z/N
-  p_x =0d0
-  p_y = 0d0
-  p_z = 0d0
+
+  pxvar(:) = momentum(:,1)*momentum(:,1)
+  pyvar(:) = momentum(:,2)*momentum(:,2)
+  pzvar(:) = momentum(:,3)*momentum(:,3)
+  conversion = (sum(pxvar)+sum(pyvar)+sum(pzvar))/N
+  print *, "conversion: ", conversion
+  conversion = sqrt(conversion)/stand_dev
+  print *, "conversion: ", conversion
+  momentum = momentum*conversion
+
   do counter=1,N
      p_x = p_x + momentum(counter,1)
      p_y = p_y + momentum(counter,2)
      p_z = p_z + momentum(counter,3)
   end do
 
+
   print *,p_x,p_y,p_z
+
   !---------------------------------------------------------------
   return
 end subroutine momentum_initializer
@@ -227,40 +243,55 @@ end subroutine momentum_balancer
   
 	
 
-subroutine get_gaussian_momentum(mass,stand_dev,x)
+subroutine get_gaussian_momentum(mass,stand_dev,p)
 
   real(8), intent(in) :: stand_dev, mass
-  real(8), intent(out) :: x
+  real(8), intent(out) :: p
 
 
-  real(8) :: random_1,random_y, I, x_integ, dx, pi, prefactor, y, test
+  real(8) :: random_1,random_y, I, p_integ, dp, pi, prefactor, y, test, povers, dI
   integer :: counter, check
 
 
-  x = 3.0d0  
   check = 0
   pi = 4d0*atan(1.0d0)
-  dx = stand_dev/10d0
-  x= 0d0
+  dp = stand_dev/10d0
+  p= 0d0
   prefactor = 1d0/(stand_dev)*dsqrt(2d0*pi)
   do while (check == 0)
-!	print *, "Part of a run\n"
      call random_number(random_1)
      random_1 = random_1
-     x_integ = -10d0*stand_dev
+     p_integ = -10d0*stand_dev
      I = 0d0
-     do while (x_integ < 10d0*stand_dev)
-        I = I + prefactor*exp(-x_integ*x_integ/(2d0*stand_dev*stand_dev))*dx
-        if (I > random_1) then
-           x = x_integ*mass
-           exit
-        else
-           x_integ = x_integ + dx
-        end if
+     do while (p_integ < 10d0*stand_dev)
+!	The cumulative Gaussian contributions appear to be too shaky,
+!	so instead a (somewhat more expensive) direct erf calculation.
+!	P_cumul = (1+erf(p/(sqrt(2)s)))/2
+       if (p_integ > -3d0*stand_dev .AND. p_integ < -3d0*stand_dev) then
+         povers = p_integ/stand_dev
+         dI = povers/dsqrt(2d0)
+         povers = -povers*povers
+         counter = 1
+         do while (abs(dI) > 1d-29)
+	  dI = dI*povers/counter
+          print *,dI
+          I = I + dI/(2*counter+1)
+	  print *,dI/(2*counter+1),I
+          counter = counter + 1
+        end do
+      else
+         I = I + prefactor*exp(-p_integ*p_integ/(2d0*stand_dev*stand_dev))*dp
+         if (I > random_1) then
+            p = p_integ
+            exit
+         else
+            p_integ = p_integ + dp
+         end if
+     end if
      end do
      call random_number(random_y)
      random_y = 10d0*random_y
-     test = prefactor*exp(-x*x/(2d0*stand_dev*stand_dev))
+     test = prefactor*exp(-p*p/(2d0*stand_dev*stand_dev))
      if (random_y < test) then
         return
         check = 1

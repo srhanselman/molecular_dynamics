@@ -22,7 +22,7 @@ subroutine calculate_temperature (particleKineticEnergy,meanMomentumSq,mass,temp
 
 	kB = 1.3806488d-2/(1.65d0)
 	
-	temperatureCalc = 2*sum(particleKineticEnergy)/size(particleKineticEnergy)! - meanMomentumSq/mass
+	temperatureCalc = 2*sum(particleKineticEnergy)/size(particleKineticEnergy) - meanMomentumSq/mass
 	temperatureCalc = temperatureCalc/(3*kB)
 end subroutine
 

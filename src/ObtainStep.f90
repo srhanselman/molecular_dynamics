@@ -129,7 +129,7 @@ subroutine verlet_eqs_of_motion_correlation(x,p,f,L,maxForceDistance,rm,bondingE
 	!    out-of-bounds shift of mean momentum. rm indicates the individual interaction
 	!    potential minimum while bondingEnergy indicates the potential depth.
 
-	integer :: i                                                                  ! a plain old iterator
+	integer :: i, N                                                                ! a plain old iterator
 	real*8, intent(in) ::    mass, timeStep, rm, bondingEnergy, L, maxForceDistance, dR
              ! maxBeta is dimensionless, mass in kg, L in m, timeStep in s, momentumTolerance is dimensionless (# stddevs)
 	real*8, intent(inout) :: x(:,:), p(:,:), f(:,:), correlation(:)
@@ -139,16 +139,21 @@ subroutine verlet_eqs_of_motion_correlation(x,p,f,L,maxForceDistance,rm,bondingE
 		! these flags signal clear divergences in individual and mean momentum
 	real*8 ::                meanMomentumSq, psq(size(x,1))
 
+	psq = 0
+	N = size(x,1)
 
         p = p + f*timeStep/(2*mass)
 	x = modulo(x+p*timeStep/mass,L)
 	call force_potential_calculator_correlation(rm,bondingEnergy,maxForceDistance,L,x,f,particlePotential,dR,correlation)
-	p = p + f * timeStep/(2*mass)
+	p = p + f*timeStep/(2*mass)
 	
 
 	meanMomentumSq = dot_product(sum(p(:,:),1),sum(p(:,:),1))                     ! sums over all particles BEFORE obtaining the modulus squared - see Changelog 2/4/2015
-	psq = dot_product(p(i,:),p(i,:))
-	particleKineticEnergy = dot_product(p(i,:),p(i,:))/(2*mass)
+	do i=1,size(p,1)
+		psq(i) = dot_product(p(i,:),p(i,:))
+	end do
+	particleKineticEnergy = psq/(2*mass)
+	meanMomentumSq = meanMomentumSq/N
 	kineticEnergyAfterStep = sum(particleKineticEnergy)
 	potentialEnergyAfterStep = sum(particlePotential)
 
