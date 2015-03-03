@@ -12,7 +12,7 @@ use md_plot
   real(8):: temp, finalTemp, tempCalc, tempPre
   real(8):: mass
   integer ::cell_dim,N,counter,counterTemp, nTimeStepsEquilibration, &
- nTimeStepsRun, nTimeStepsTempStep
+ nTimeStepsRun, nTimeStepsTempStep, nTimeStepsTempStepRun
   real(8):: lattice_constant, box_length, maxForceDistance, rm, bondingEnergy
   real(8):: timeStep, meanMomentumSq, kineticEnergyAfterStep, dR, pressure
   real(8):: potentialEnergyAfterStep, tempStep
@@ -34,7 +34,7 @@ use md_plot
   real:: correctTemperature
   logical:: checkHeatCapacity, checkChemicalPotential
 
-  correctTemperature = 0.01
+  correctTemperature = 1d-2
   checkHeatCapacity = .FALSE.
   checkChemicalPotential = .FALSE.
 
@@ -59,13 +59,14 @@ use md_plot
   bondingEnergy = 1d0   !Energy is in bondingEnergy
   lattice_constant = dsqrt(2d0)*rm    !Length is in rm
   maxForceDistance = 5*rm
-  dR = 1d-1*rm
+  dR = 2d-2*rm
   timeStep = 0.0004 !Time is in sqrt(argon_mass rm²/bondingEnergy) = 2.41980663d-12 s
   cell_dim = 9 !This is the number of lattice spacings within the box;
                !the number of particles (N) is 4/uc times cell_dim translational copies
   nTimeStepsEquilibration = 1000
   nTimeStepsRun = 800
-  nTimeStepsTempStep = 100
+  nTimeStepsTempStep = 800
+  nTimeStepsTempStepRun = 500
   
   N = 4*cell_dim**3
   box_length = cell_dim*lattice_constant
@@ -144,6 +145,8 @@ use md_plot
     end if
   end do
 
+correlation = 0
+
 if(nTimeStepsTempStep == 0) then
   do counter=1,nTimeStepsRun
     call verlet_eqs_of_motion_correlation(pos,momenta,force,box_length,maxForceDistance,rm,bondingEnergy,mass,timeStep, &
@@ -155,8 +158,11 @@ if(nTimeStepsTempStep == 0) then
  ";",kineticEnergyAfterStep+potentialEnergyAfterStep,";",tempCalc,";",meanMomentumSq, &
  ";",pressure
   end do
+  write (2,*) "Correlation function: ", correlation
+
 else
  do while (temp < FinalTemp+5d0)
+  write (1,*) "Equilibrating at new temperature ", temp
   do counter=1,nTimeStepsTempStep
     call verlet_eqs_of_motion_correlation(pos,momenta,force,box_length,maxForceDistance,rm,bondingEnergy,mass,timeStep, &
     meanMomentumSq, particleKineticEnergy,particlePotential,kineticEnergyAfterStep,potentialEnergyAfterStep,dR,correlation)
@@ -167,11 +173,24 @@ else
  ";",kineticEnergyAfterStep+potentialEnergyAfterStep,";",tempCalc,";",meanMomentumSq, &
  ";",pressure
   end do
+
+  correlation = 0
+  write (2,*) "Running at new temperature ", temp
+  do counter=1,nTimeStepsTempStepRun
+    call verlet_eqs_of_motion_correlation(pos,momenta,force,box_length,maxForceDistance,rm,bondingEnergy,mass,timeStep, &
+    meanMomentumSq, particleKineticEnergy,particlePotential,kineticEnergyAfterStep,potentialEnergyAfterStep,dR,correlation)
+    call calculate_temperature(particleKineticEnergy,meanMomentumSq,mass,tempCalc)
+    call momentum_balancer(momenta,N)
+    call calculate_pressure(pos,force,box_length,N,tempCalc,pressure)
+    write (2,*) counter,";",kineticEnergyAfterStep,";",potentialEnergyAfterStep, &
+ ";",kineticEnergyAfterStep+potentialEnergyAfterStep,";",tempCalc,";",meanMomentumSq, &
+ ";",pressure
+  end do
+  write (2,*) "Correlation function at temperature ", temp, ": ", correlation
   temp = temp + tempStep
  end do
 end if
  
-  write(2,*) correlation  
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
