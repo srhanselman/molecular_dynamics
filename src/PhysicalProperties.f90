@@ -26,13 +26,27 @@ subroutine calculate_temperature (particleKineticEnergy,meanMomentumSq,mass,temp
 	temperatureCalc = temperatureCalc/(3*kB)
 end subroutine
 
-subroutine calculate_pressure (x,f,L,pressure)
+subroutine calculate_pressure (x,f,L,N,currentTemp,pressure)
 	! This subroutine uses the virial theorem to calculate the pressure of the multi-particle model.
-	! PV = N*kB*T(1 - f(x,F)/3N)
-	real*8, intent(in)  :: x(:,:), f(:,:), L
+	! PV = N*kB*T(1 - f(x,F)/3N) = NkBT + <r.F>/3
+	real*8, intent(in)  :: x(:,:), f(:,:), L, currentTemp
 	real*8, intent(out) :: pressure
+	real*8              :: volume, kB, positionForce(N)
+	integer, intent(in) :: N
+	integer             :: i
 
+	volume = L*L*L
+	kB = 1.3806488d-2/(1.65d0)
+
+	do i=1,N
+		positionForce(i) = dot_product(x(i,:),f(i,:))
+	end do
+
+        pressure = N*kB*currentTemp + sum(positionForce)/(3*N)
+        pressure = pressure/volume
+        
 end subroutine
+
 
 subroutine correlation_function_scalar (particleDistanceSq,dr,L,g)
 	! This subroutine divides one single relative distance between by its spherical shell depth,
