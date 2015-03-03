@@ -9,12 +9,13 @@ use ForceCalculator
 use md_plot
 
   Implicit None
-  real(8):: temp, tempCalc, tempPre
+  real(8):: temp, finalTemp, tempCalc, tempPre
   real(8):: mass
-  integer ::cell_dim,N,counter
+  integer ::cell_dim,N,counter,counterTemp, nTimeStepsEquilibration, &
+ nTimeStepsRun, nTimeStepsTempStep
   real(8):: lattice_constant, box_length, maxForceDistance, rm, bondingEnergy
   real(8):: timeStep, meanMomentumSq, kineticEnergyAfterStep, dR, pressure
-  real(8):: potentialEnergyAfterStep
+  real(8):: potentialEnergyAfterStep, tempStep
   real(8), allocatable :: pos(:,:)
   real(8), allocatable :: momenta(:,:)
   real(8), allocatable :: force(:,:)
@@ -25,9 +26,17 @@ use md_plot
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! The program can be controlled using these switches:
+!  - correct_temperature contains either 0 or the temperature tolerance.
+!  - check_heat_capacity and check_chemical_potential switch on tests after
+!      equilibration.
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-  logical:: check_heat_capacity, check_chemical_potential,
+  real:: correctTemperature
+  logical:: checkHeatCapacity, checkChemicalPotential
+
+  correctTemperature = 0.01
+  checkHeatCapacity = .FALSE.
+  checkChemicalPotential = .FALSE.
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! A short explanation of the units: the goal is to have rm = mass = bondingEnergy
@@ -42,8 +51,9 @@ use md_plot
 ! kB = 1 J/K = 1 (bondingEnergy/J)^-1 bondingEnergy/K = 1/1.65d-21 K^-1
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-  temp = 1d0		!Temperature is in K (apart from kB, this is the sole exception)
-
+  temp = 1d1		!Temperature is in K (apart from kB, this is the sole exception)
+  finalTemp = 1d2
+  tempStep = 5d-1
   mass = 1d0		!Mass is in argon_mass
   rm = 1d0		!Length is in rm
   bondingEnergy = 1d0   !Energy is in bondingEnergy
@@ -51,9 +61,11 @@ use md_plot
   maxForceDistance = 5*rm
   dR = 1d-1*rm
   timeStep = 0.0004 !Time is in sqrt(argon_mass rm²/bondingEnergy) = 2.41980663d-12 s
-  cell_dim = 8 !This is the number of lattice spacings within the box;
+  cell_dim = 9 !This is the number of lattice spacings within the box;
                !the number of particles (N) is 4/uc times cell_dim translational copies
-
+  nTimeStepsEquilibration = 1000
+  nTimeStepsRun = 800
+  nTimeStepsTempStep = 100
   
   N = 4*cell_dim**3
   box_length = cell_dim*lattice_constant
@@ -64,6 +76,19 @@ use md_plot
   allocate( particleKineticEnergy(N) )
   allocate( particlePotential(N) )
   allocate( correlation(ceiling(dsqrt(3.0d0)*box_length/(2*dR))+1) )
+
+!!!
+!!! Opening the files needed to start:
+!!!
+
+  open(unit = 1, file="equilibration.csv")
+  open(unit = 2, file="run.csv")
+  if (checkHeatCapacity) then
+    open(unit=10, file="heatcapacity.csv")
+  end if
+  if (checkChemicalPotential) then
+    open(unit=11, file="chemicalpotential.csv")
+  end if
 
 !!!
 !!! First, the system's particle positions and momenta will be initialized.
@@ -83,7 +108,9 @@ use md_plot
   meanMomentumSq = dot_product(sum(momenta,1),sum(momenta,1))
   print *, "Initial mean momentum squared: ", meanMomentumSq
   call calculate_temperature(particleKineticEnergy,meanMomentumSq,mass,tempCalc)
-
+  if(correctTemperature /= 0 .AND. correctTemperature > abs(tempCalc/temp-1)) then
+    momenta = momenta * sqrt(temp/tempCalc)
+  end if
 !!!
 !!! The simulation starts by calculating the initial forces and starting the stepping procedure.
 !!!
@@ -91,24 +118,82 @@ use md_plot
   call force_potential_calculator_correlation(rm,bondingEnergy,maxForceDistance,box_length,pos,force,potential,dR,correlation)
   print *, "Start of simulation!"
   print *, "Initial temperature: ", tempCalc
-  print *, "Step; ", "Kinetic energy; ", "Potential energy; ", "Total energy; ", "Calculated temperature; ", &
+  write (1,*) "Step; ", "Kinetic energy; ", "Potential energy; ", "Total energy; ", "Calculated temperature; ", &
+ "Mean momentum squared; ", "Pressure; "
+  write (2,*) "Step; ", "Kinetic energy; ", "Potential energy; ", "Total energy; ", "Calculated temperature; ", &
  "Mean momentum squared; ", "Pressure; "
 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!   This is the initial procedure, in which the temperature may be equilibrated.
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-  do counter=1,1000
+
+
+  do counter=1,nTimeStepsEquilibration
     
     call verlet_eqs_of_motion_correlation(pos,momenta,force,box_length,maxForceDistance,rm,bondingEnergy,mass,timeStep, &
     meanMomentumSq, particleKineticEnergy,particlePotential,kineticEnergyAfterStep,potentialEnergyAfterStep,dR,correlation)
     call calculate_temperature(particleKineticEnergy,meanMomentumSq,mass,tempCalc)
     call momentum_balancer(momenta,N)
     call calculate_pressure(pos,force,box_length,N,tempCalc,pressure)
-    print *, counter,";",kineticEnergyAfterStep,";",potentialEnergyAfterStep, &
+    write (1,*) counter,";",kineticEnergyAfterStep,";",potentialEnergyAfterStep, &
  ";",kineticEnergyAfterStep+potentialEnergyAfterStep,";",tempCalc,";",meanMomentumSq, &
  ";",pressure
-
+    if(correctTemperature /= 0 .AND. correctTemperature > abs(tempCalc/temp)-1) then
+      momenta = momenta * sqrt(temp/tempCalc)
+    end if
   end do
 
+if(nTimeStepsTempStep == 0) then
+  do counter=1,nTimeStepsRun
+    call verlet_eqs_of_motion_correlation(pos,momenta,force,box_length,maxForceDistance,rm,bondingEnergy,mass,timeStep, &
+    meanMomentumSq, particleKineticEnergy,particlePotential,kineticEnergyAfterStep,potentialEnergyAfterStep,dR,correlation)
+    call calculate_temperature(particleKineticEnergy,meanMomentumSq,mass,tempCalc)
+    call momentum_balancer(momenta,N)
+    call calculate_pressure(pos,force,box_length,N,tempCalc,pressure)
+    write (2,*) counter,";",kineticEnergyAfterStep,";",potentialEnergyAfterStep, &
+ ";",kineticEnergyAfterStep+potentialEnergyAfterStep,";",tempCalc,";",meanMomentumSq, &
+ ";",pressure
+  end do
+else
+ do while (temp < FinalTemp+5d0)
+  do counter=1,nTimeStepsTempStep
+    call verlet_eqs_of_motion_correlation(pos,momenta,force,box_length,maxForceDistance,rm,bondingEnergy,mass,timeStep, &
+    meanMomentumSq, particleKineticEnergy,particlePotential,kineticEnergyAfterStep,potentialEnergyAfterStep,dR,correlation)
+    call calculate_temperature(particleKineticEnergy,meanMomentumSq,mass,tempCalc)
+    call momentum_balancer(momenta,N)
+    call calculate_pressure(pos,force,box_length,N,tempCalc,pressure)
+    write (2,*) counter,";",kineticEnergyAfterStep,";",potentialEnergyAfterStep, &
+ ";",kineticEnergyAfterStep+potentialEnergyAfterStep,";",tempCalc,";",meanMomentumSq, &
+ ";",pressure
+  end do
+  temp = temp + tempStep
+ end do
+end if
+ 
+  write(2,*) correlation  
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
   print *, "Simulation completed!"
+
+  close(1)
+  close(2)
+  if (checkHeatCapacity) then
+    close(10)
+  end if
+  if (checkChemicalPotential) then
+    close(11)
+  end if
+
+
+  deallocate( pos )
+  deallocate( momenta )
+  deallocate( force )
+  deallocate( potential )
+  deallocate( particleKineticEnergy )
+  deallocate( particlePotential )
+  deallocate( correlation )
 
 end program
 

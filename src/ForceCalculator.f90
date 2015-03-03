@@ -53,7 +53,6 @@ subroutine force_calculator(rm,bondingEnergy,maxForceDistance,L,x,f,particleDist
 		end do
 	end do
 
-
 end subroutine
 
 
@@ -135,30 +134,34 @@ subroutine force_potential_calculator_correlation(rm,bondingEnergy,maxForceDista
 	real*8, intent(inout) ::  correlation(:)
 	real*8, intent(out) ::    f(:,:)
 	real*8, intent(out) ::    potential(size(x,1))
-	real*8 ::		  dx(3), distancesq
-	real*8 ::                 fPair(3), potentialPair
+	real*8 ::		  dx(size(x,1),3), distancesq(size(x,1))
+	real*8 ::                 fPair(size(x,1),3), potentialPair(size(x,1))
 	integer ::		  i, j, N
 	
 	N = size(x,1)
-	f = 0
+        f = 0
 	potential = 0
 
+
 	do i=1,N
+!!$omp parallel do shared(x,f,potential,dR,L,correlation,i,rm,maxForceDistance) private(j,distancesq,fPair,potentialPair) &
+!!$omp& schedule(static,1000)
 		do j=i+1,N
-			dx = x(i,:) - x(j,:)
-			dx = dx-nint(dx/L)*L
-			distancesq = dot_product(dx,dx)
-			call correlation_function_scalar(distancesq,dR,L,correlation)
-			if (distancesq < maxForceDistance*maxForceDistance) then
-				distancesq = 1/distancesq
-				fPair =  12*bondingEnergy*dx*(-rm**6*distancesq**4+rm**12*distancesq**7)
-				potentialPair = bondingEnergy*(-2*rm**6*distancesq**3+rm**12*distancesq**6)
-				f(i,:) = f(i,:) + fPair
-				f(j,:) = f(j,:) - fPair
-				potential(i) = potential(i) + potentialPair
-				potential(j) = potential(j) + potentialPair
+			dx(j,:) = x(i,:) - x(j,:)
+			dx(j,:) = dx(j,:)-nint(dx(j,:)/L)*L
+			distancesq(j) = dot_product(dx(j,:),dx(j,:))
+			call correlation_function_scalar(distancesq(j),dR,L,correlation)
+			if (distancesq(j) < maxForceDistance*maxForceDistance) then
+				distancesq(j) = 1/distancesq(j)
+				fPair(j,:) =  12*bondingEnergy*dx(j,:)*(-rm**6*distancesq(j)**4+rm**12*distancesq(j)**7)
+				potentialPair(j) = bondingEnergy*(-2*rm**6*distancesq(j)**3+rm**12*distancesq(j)**6)
+				f(i,:) = f(i,:) + fPair(j,:)
+				f(j,:) = f(j,:) - fPair(j,:)
+				potential(i) = potential(i) + potentialPair(j)
+				potential(j) = potential(j) + potentialPair(j)
 			end if
 		end do
+!!$omp end parallel do
 	end do
 
 

@@ -40,13 +40,13 @@ subroutine verlet_eqs_of_motion(x,p,f,L,maxForceDistance,rm,bondingEnergy,mass,t
 		! these flags signal clear divergences in individual and mean momentum
 	real*8 ::                meanMomentumSq
 
-
+!$omp parallel
         p = p + f*timeStep/2
 	x = modulo(x+p*timeStep/mass,L)
 	call force_potential_calculator(rm,bondingEnergy,maxForceDistance,L,x,f,particlePotential, &
 	 particleDistanceSq)
 	p = p + f * timeStep/(2*mass)
-	
+!$omp end parallel	
 
 	meanMomentumSq = dot_product(sum(p(:,:),1),sum(p(:,:),1))                     ! sums over all particles BEFORE obtaining the modulus squared - see Changelog 2/4/2015
 	particleKineticEnergy = dot_product(p(i,:),p(i,:))/(2*mass)
