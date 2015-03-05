@@ -108,7 +108,7 @@ subroutine verlet_eqs_of_motion_checks(x,p,f,L,maxBeta,momentumTolerance,mass,ti
 
 	particleKineticEnergy = particleMomentumSq/(2*mass)
 	kineticEnergyAfterStep = sum(particleKineticEnergy)
-	potentialEnergyAfterStep = sum(particlePotential)
+	potentialEnergyAfterStep = sum(particlePotential)/2
 
 	energyNotPreserved = (abs(kineticEnergyAfterStep-potentialEnergyAfterStep) > kB*temperature)
 

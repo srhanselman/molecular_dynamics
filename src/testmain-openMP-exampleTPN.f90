@@ -13,13 +13,13 @@ use md_plot
   real(8):: mass
   integer ::cell_dim,N,counter,counterTemp, nTimeStepsEquilibration, &
  nTimeStepsRun, nTimeStepsTempStep, nTimeStepsTempStepRun, &
- nChemicalPotentialTemperatures
+ nChemicalPotentialTemperatures, innerCounter,nThreads
   real(8):: lattice_constant, boxLength, maxForceDistance, rm, bondingEnergy
   real(8):: timeStep, meanMomentumSq, kineticEnergyAfterStep, dR, pressure
-  real(8):: potentialEnergyAfterStep, tempStep
-  real(8), allocatable :: pos(:,:), posminparticle(:,:), posplusparticle(:,:)
-  real(8), allocatable :: momenta(:,:), momentaminparticle(:,:), posplusparticle(:,:)
-  real(8), allocatable :: force(:,:), forceminparticle(:,:), forceplusparticle(:,:)
+  real(8):: potentialEnergyAfterStep, tempStep, kB
+  real(8), allocatable :: pos(:,:)
+  real(8), allocatable :: momenta(:,:)
+  real(8), allocatable :: force(:,:)
   real(8), allocatable :: potential(:)
   real(8), allocatable :: particleKineticEnergy(:)
   real(8), allocatable :: particlePotential(:)
@@ -37,7 +37,7 @@ use md_plot
   real:: correctTemperature, constantPressure
   logical:: checkHeatCapacity, checkChemicalPotential
 
-  constantPressure = 0 !Pressure is in eps/rm^3 = 29684667.9463 Pa
+  constantPressure = 1d5/29684667.9463 !Pressure is in eps/rm^3 = 29684667.9463 Pa
   correctTemperature = 1d-2
   checkHeatCapacity = .FALSE.
   checkChemicalPotential = .FALSE.
@@ -54,8 +54,8 @@ use md_plot
 !
 ! kB = 1 J/K = 1 (bondingEnergy/J)^-1 bondingEnergy/K = 1/1.65d-21 K^-1
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-  temp = 1d1		!Temperature is in K (apart from kB, this is the sole exception)
+  kB = 1.3806488d-2/1.65d0
+  temp = 5d0		!Temperature is in K (apart from kB, this is the sole exception)
   finalTemp = 1d2
   tempStep = 1d0
   mass = 1d0		!Mass is in argon_mass
@@ -68,7 +68,7 @@ use md_plot
   cell_dim = 9 !This is the number of lattice spacings within the box;
                !the number of particles (N) is 4/uc times cell_dim translational copies
   nTimeStepsEquilibration = 1000
-  nTimeStepsRun = 800
+  nTimeStepsRun = 500
   nTimeStepsTempStep = 800
   nTimeStepsTempStepRun = 500
   
@@ -81,6 +81,8 @@ use md_plot
   allocate( particleKineticEnergy(N) )
   allocate( particlePotential(N) )
   allocate( correlation(ceiling(dsqrt(3.0d0)*boxLength/(2*dR))+1) )
+
+  nThreads = 2
 
 !!!
 !!! Opening the files needed to start:
@@ -120,7 +122,6 @@ use md_plot
   end if
 
 
-
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !!  !!  !!  !!  !!  !!  !!  !!  !!  !!  !!  !!  !!  !!  !!   !!  !!  !!  !!  !!  !!  !!  !!  !!  !!  !!  !!  !!  !!  !!
@@ -143,6 +144,7 @@ if (constantPressure == 0) then
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
+
 !!!
 !!! The simulation starts by calculating the initial forces and starting the stepping procedure.
 !!!
@@ -150,16 +152,10 @@ if (constantPressure == 0) then
   call force_potential_calculator_correlation(rm,bondingEnergy,maxForceDistance,boxLength,pos,force,potential,dR,correlation)
   print *, "Start of simulation!"
   print *, "Initial temperature: ", tempCalc
-
   write (1,*) "Step; ", "Kinetic energy; ", "Potential energy; ", "Total energy; ", "Calculated temperature; ", &
  "Mean momentum squared; ", "Pressure; "
   write (2,*) "Step; ", "Kinetic energy; ", "Potential energy; ", "Total energy; ", "Calculated temperature; ", &
  "Mean momentum squared; ", "Pressure; "
-
-
-
-
-
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !   This is the initial procedure, in which the temperature may be equilibrated.
@@ -174,7 +170,6 @@ if (constantPressure == 0) then
     call calculate_temperature(particleKineticEnergy,meanMomentumSq,mass,tempCalc)
     call momentum_balancer(momenta,N)
     call calculate_pressure(pos,force,boxLength,N,tempCalc,pressure)
-
     write (1,*) counter,";",kineticEnergyAfterStep,";",potentialEnergyAfterStep, &
  ";",kineticEnergyAfterStep+potentialEnergyAfterStep,";",tempCalc,";",meanMomentumSq, &
  ";",pressure
@@ -198,43 +193,61 @@ if(nTimeStepsTempStep == 0) then
   end do
   write (2,*) "Correlation function: ", correlation
 else
- do while (temp < FinalTemp+5d0)
-  write (1,*) "Equilibrating at new temperature ", temp
-  do counter=1,nTimeStepsTempStep
-    call verlet_eqs_of_motion_correlation(pos,momenta,force,boxLength,maxForceDistance,rm,bondingEnergy,mass,timeStep, &
-    meanMomentumSq, particleKineticEnergy,particlePotential,kineticEnergyAfterStep,potentialEnergyAfterStep,dR,correlation)
-    call calculate_temperature(particleKineticEnergy,meanMomentumSq,mass,tempCalc)
-    call momentum_balancer(momenta,N)
-    call calculate_pressure(pos,force,boxLength,N,tempCalc,pressure)
-    write (1,*) counter,";",kineticEnergyAfterStep,";",potentialEnergyAfterStep, &
- ";",kineticEnergyAfterStep+potentialEnergyAfterStep,";",tempCalc,";",meanMomentumSq, &
- ";",pressure
-    if(correctTemperature /= 0 .AND. correctTemperature < abs(tempCalc/temp)-1) then
-      momenta = momenta * sqrt(temp/tempCalc)
-    end if
+ do while (temp < FinalTemp+5d-1)
+!$omp parallel do schedule(static,1) shared(nTimeStepsTempStep,boxLength,maxForceDistance, &
+!$omp&  rm,bondingEnergy,mass,timeStep,dR,N) private(meanMomentumSq,particleKineticEnergy, &
+!$omp&  particlePotential,kineticEnergyAfterStep,potentialEnergyAfterStep,correlation, &
+!$omp&  tempCalc,pressure,innerCounter,counter) firstprivate(pos,momenta,force,temp) &
+!$omp&  lastprivate(pos,momenta,force,temp)
+   do innerCounter=1,nThreads
+!!!!!!!!!!!!!! BEGIN OF EQUILIBRATION !!!!!!!!!!!!!
+!$omp flush
+    temp=temp+innerCounter*tempStep
+    do counter=1,nTimeStepsTempStep
+     call verlet_eqs_of_motion_correlation(pos,momenta,force,boxLength,maxForceDistance, &
+      rm,bondingEnergy,mass,timeStep,meanMomentumSq,particleKineticEnergy, &
+      particlePotential,kineticEnergyAfterStep,potentialEnergyAfterStep,dR,correlation)
+     call calculate_temperature(particleKineticEnergy,meanMomentumSq,mass,tempCalc)
+     call momentum_balancer(momenta,N)
+     call calculate_pressure(pos,force,boxLength,N,tempCalc,pressure)
+!$omp CRITICAL
+     write (1,*) counter,";",kineticEnergyAfterStep,";",potentialEnergyAfterStep, &
+   ";",kineticEnergyAfterStep+potentialEnergyAfterStep,";",tempCalc,";",temp,";", &
+   meanMomentumSq,";",pressure
+!$omp END CRITICAL
+     if(correctTemperature /= 0 .AND. correctTemperature < abs(tempCalc/temp)-1) then
+       momenta = momenta * sqrt(temp/tempCalc)
+     end if
+    end do
+!!!!!!!!!!!!!!!!! BEGIN OF RUN !!!!!!!!!!!!!!!!!!!!
+    correlation = 0
+   do counter=1,nTimeStepsTempStepRun
+     call verlet_eqs_of_motion_correlation(pos,momenta,force,boxLength,maxForceDistance, &
+      rm,bondingEnergy,mass,timeStep,meanMomentumSq,particleKineticEnergy, &
+      particlePotential,kineticEnergyAfterStep,potentialEnergyAfterStep,dR,correlation)
+     call calculate_temperature(particleKineticEnergy,meanMomentumSq,mass,tempCalc)
+     call momentum_balancer(momenta,N)
+     call calculate_pressure(pos,force,boxLength,N,tempCalc,pressure)
+!$omp CRITICAL
+     write (2,*) counter,";",kineticEnergyAfterStep,";",potentialEnergyAfterStep, &
+   ";",kineticEnergyAfterStep+potentialEnergyAfterStep,";",tempCalc,";",temp,";", &
+   meanMomentumSq,";",pressure
+!$omp END CRITICAL
+   end do
+!$omp CRITICAL
+   write (2,*) "Correlation function at temperature ", temp, ": ", correlation
+!$omp END CRITICAL
   end do
-
-  correlation = 0
-  write (2,*) "Running at new temperature ", temp
-  do counter=1,nTimeStepsTempStepRun
-    call verlet_eqs_of_motion_correlation(pos,momenta,force,boxLength,maxForceDistance,rm,bondingEnergy,mass,timeStep, &
-    meanMomentumSq, particleKineticEnergy,particlePotential,kineticEnergyAfterStep,potentialEnergyAfterStep,dR,correlation)
-    call calculate_temperature(particleKineticEnergy,meanMomentumSq,mass,tempCalc)
-    call momentum_balancer(momenta,N)
-    call calculate_pressure(pos,force,boxLength,N,tempCalc,pressure)
-    write (2,*) counter,";",kineticEnergyAfterStep,";",potentialEnergyAfterStep, &
- ";",kineticEnergyAfterStep+potentialEnergyAfterStep,";",tempCalc,";",meanMomentumSq, &
- ";",pressure
-  end do
-  write (2,*) "Correlation function at temperature ", temp, ": ", correlation
-  temp = temp + tempStep
+!$omp end parallel do
  end do
-end if
+ end if
+
+
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 else if (constantPressure > 0) then
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!!!!!!!!! The subsequent procedure is ONLY MEANT FOR TPN systems - it resizes boxLength after EACH time step !!!!!!!!!
+!!!!!!!!! The subsequent procedure is ONLY MEANT FOR TPN systems - it resizes boxLength before EACH time step !!!!!!!!!
 !!  !!  !!  !!  !!  !!  !!  !!  !!  !!  !!  !!  !!  !!  !!   !!  !!  !!  !!  !!  !!  !!  !!  !!  !!  !!  !!  !!  !!  !!
 !! TPN ONLY --- TPN ONLY --- TPN ONLY --- TPN ONLY --- TPN  ONLY --- TPN ONLY --- TPN ONLY --- TPN ONLY --- TPN ONLY !!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -242,18 +255,22 @@ else if (constantPressure > 0) then
 
 !!!
 !!! The simulation starts by calculating the initial forces and starting the stepping procedure.
+!!! Note that the boxLength is first resized to fit the ideal gas law (NkBT/p = V);
+!!! moreover, the correlation box spacing is decreased/increased correspondingly.
 !!!
+  dR = dR*((N*kB*temp)/constantPressure)**(1d0/3d0)/boxLength
+  boxLength = ((N*kB*temp)/constantPressure)**(1d0/3d0)
 
   call force_potential_calculator_correlation(rm,bondingEnergy,maxForceDistance,boxLength,pos,force,potential,dR,correlation)
   print *, "Start of simulation!"
   print *, "Initial temperature: ", tempCalc
+  write (1,*) "Initial dR is ", dR
+  write (2,*) "Initial dR is ", dR
 
   write (1,*) "Step; ", "Kinetic energy; ", "Potential energy; ", "Total energy; ", "Calculated temperature; ", &
  "Mean momentum squared; ", "Pressure; ", "Box length; ", "Volume"
   write (2,*) "Step; ", "Kinetic energy; ", "Potential energy; ", "Total energy; ", "Calculated temperature; ", &
  "Mean momentum squared; ", "Pressure; ", "Box length; ", "Volume"
-
-
 
 
 
@@ -273,7 +290,7 @@ else if (constantPressure > 0) then
     call calculate_pressure(pos,force,boxLength,N,tempCalc,pressure)
     write (1,*) counter,";",kineticEnergyAfterStep,";",potentialEnergyAfterStep, &
  ";",kineticEnergyAfterStep+potentialEnergyAfterStep,";",tempCalc,";",meanMomentumSq, &
- ";",pressure
+ ";",pressure,";",boxLength,";",boxLength**(3d0)
     if(correctTemperature /= 0 .AND. correctTemperature < abs(tempCalc/temp)-1) then
       momenta = momenta * sqrt(temp/tempCalc)
     end if
@@ -284,8 +301,8 @@ correlation = 0
 if(nTimeStepsTempStep == 0) then
   do counter=1,nTimeStepsRun
     !  Volume correction (PV)  !
-    boxLength = boxLength*((constantPressure/pressure)**(1d0/3d0))
-    pos = pos*((constantPressure/pressure)**(1d0/3d0))
+    boxLength = boxLength*((pressure/constantPressure)**(1d0/3d0))
+    pos = pos*((pressure/constantPressure)**(1d0/3d0))
     ! End of volume correction !
     call verlet_eqs_of_motion_correlation(pos,momenta,force,boxLength,maxForceDistance,rm,bondingEnergy,mass,timeStep, &
     meanMomentumSq, particleKineticEnergy,particlePotential,kineticEnergyAfterStep,potentialEnergyAfterStep,dR,correlation)
@@ -294,54 +311,65 @@ if(nTimeStepsTempStep == 0) then
     call calculate_pressure(pos,force,boxLength,N,tempCalc,pressure)
     write (2,*) counter,";",kineticEnergyAfterStep,";",potentialEnergyAfterStep, &
  ";",kineticEnergyAfterStep+potentialEnergyAfterStep,";",tempCalc,";",meanMomentumSq, &
- ";",pressure,";",boxLength,";",boxLength**(3d0)
-    
+ ";",pressure,";",boxLength,";",boxLength**(3d0)    
   end do
   write (2,*) "Correlation function: ", correlation
 else
- do while (temp < FinalTemp+5d0)
-  write (1,*) "Equilibrating at new temperature ", temp
-  do counter=1,nTimeStepsTempStep
-    !  Volume correction (PV)  !
-    boxLength = (constantPressure/pressure)**(1d0/3d0)
-    pos = pos*((constantPressure/pressure)**(1d0/3d0))
-    ! End of volume correction !
-    call verlet_eqs_of_motion_correlation(pos,momenta,force,boxLength,maxForceDistance,rm,bondingEnergy,mass,timeStep, &
-    meanMomentumSq, particleKineticEnergy,particlePotential,kineticEnergyAfterStep,potentialEnergyAfterStep,dR,correlation)
-    call calculate_temperature(particleKineticEnergy,meanMomentumSq,mass,tempCalc)
-    call momentum_balancer(momenta,N)
-    call calculate_pressure(pos,force,boxLength,N,tempCalc,pressure)
+ do while (temp < FinalTemp+5d-1)
+!$omp parallel do schedule(static,1) shared(nTimeStepsTempStep,maxForceDistance, &
+!$omp&  rm,bondingEnergy,mass,timeStep,dR,N) private(meanMomentumSq,particleKineticEnergy, &
+!$omp&  particlePotential,kineticEnergyAfterStep,potentialEnergyAfterStep,correlation, &
+!$omp&  tempCalc,pressure,innerCounter,counter) firstprivate(pos,momenta,force,temp,boxLength) &
+!$omp&  lastprivate(pos,momenta,force,temp,boxLength)
+   do innerCounter=1,nThreads
+!!!!!!!!!!!!!! BEGIN OF EQUILIBRATION !!!!!!!!!!!!!
+!$omp flush
+    boxLength = boxLength*(((temp+innerCounter*tempStep)/temp)**(1d0/3d0))
+    temp=temp+innerCounter*tempStep
+    
+    do counter=1,nTimeStepsTempStep
+     !  Volume correction (PV)  !
+     boxLength = boxLength*((pressure/constantPressure)**(1d0/3d0))
+     pos = pos*((pressure/constantPressure)**(1d0/3d0))
+     ! End of volume correction !
+     call verlet_eqs_of_motion_correlation(pos,momenta,force,boxLength,maxForceDistance, &
+      rm,bondingEnergy,mass,timeStep,meanMomentumSq,particleKineticEnergy, &
+      particlePotential,kineticEnergyAfterStep,potentialEnergyAfterStep,dR,correlation)
+     call calculate_temperature(particleKineticEnergy,meanMomentumSq,mass,tempCalc)
+     call momentum_balancer(momenta,N)
+     call calculate_pressure(pos,force,boxLength,N,tempCalc,pressure)
+!$omp CRITICAL
     write (1,*) counter,";",kineticEnergyAfterStep,";",potentialEnergyAfterStep, &
  ";",kineticEnergyAfterStep+potentialEnergyAfterStep,";",tempCalc,";",meanMomentumSq, &
  ";",pressure,";",boxLength,";",boxLength**(3d0)
-    if(correctTemperature /= 0 .AND. correctTemperature < abs(tempCalc/temp)-1) then
-      momenta = momenta * sqrt(temp/tempCalc)
-    end if
-  end do
-
-  correlation = 0
-  write (2,*) "Running at new temperature ", temp
-  do counter=1,nTimeStepsTempStepRun
-    !  Volume correction (PV)  !
-    boxLength = boxLength*((constantPressure/pressure)**(1d0/3d0))
-    pos = pos*((constantPressure/pressure)**(1d0/3d0))
-    ! End of volume correction !
-    call verlet_eqs_of_motion_correlation(pos,momenta,force,boxLength,maxForceDistance,rm,bondingEnergy,mass,timeStep, &
-    meanMomentumSq, particleKineticEnergy,particlePotential,kineticEnergyAfterStep,potentialEnergyAfterStep,dR,correlation)
-    call calculate_temperature(particleKineticEnergy,meanMomentumSq,mass,tempCalc)
-    call momentum_balancer(momenta,N)
-    call calculate_pressure(pos,force,boxLength,N,tempCalc,pressure)
+!$omp END CRITICAL
+     if(correctTemperature /= 0 .AND. correctTemperature < abs(tempCalc/temp)-1) then
+       momenta = momenta * sqrt(temp/tempCalc)
+     end if
+    end do
+!!!!!!!!!!!!!!!!! BEGIN OF RUN !!!!!!!!!!!!!!!!!!!!
+    correlation = 0
+   do counter=1,nTimeStepsTempStepRun
+     call verlet_eqs_of_motion_correlation(pos,momenta,force,boxLength,maxForceDistance, &
+      rm,bondingEnergy,mass,timeStep,meanMomentumSq,particleKineticEnergy, &
+      particlePotential,kineticEnergyAfterStep,potentialEnergyAfterStep,dR,correlation)
+     call calculate_temperature(particleKineticEnergy,meanMomentumSq,mass,tempCalc)
+     call momentum_balancer(momenta,N)
+     call calculate_pressure(pos,force,boxLength,N,tempCalc,pressure)
+!$omp CRITICAL
     write (2,*) counter,";",kineticEnergyAfterStep,";",potentialEnergyAfterStep, &
  ";",kineticEnergyAfterStep+potentialEnergyAfterStep,";",tempCalc,";",meanMomentumSq, &
  ";",pressure,";",boxLength,";",boxLength**(3d0)
+!$omp END CRITICAL
+   end do
+!$omp CRITICAL
+   write (2,*) "Correlation function at temperature ", temp, ": ", correlation
+!$omp END CRITICAL
   end do
-  write (2,*) "Correlation function at temperature ", temp, ": ", correlation
-  temp = temp + tempStep
+!$omp end parallel do
  end do
-end if
+ end if
 
-
- 
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
@@ -349,6 +377,7 @@ else
   print *, "No negative pressures allowed!"
 
 end if
+
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
