@@ -155,7 +155,7 @@ subroutine verlet_eqs_of_motion_correlation(x,p,f,L,maxForceDistance,rm,bondingE
 	particleKineticEnergy = psq/(2*mass)
 	meanMomentumSq = meanMomentumSq/N
 	kineticEnergyAfterStep = sum(particleKineticEnergy)
-	potentialEnergyAfterStep = sum(particlePotential)
+	potentialEnergyAfterStep = sum(particlePotential)/2
 
 end subroutine
 

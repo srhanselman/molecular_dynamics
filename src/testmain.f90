@@ -115,7 +115,7 @@ use md_plot
   write (1,*) "The system contains ", N, " particles."
   write (2,*) "The system contains ", N, " particles."
   call calculate_temperature(particleKineticEnergy,meanMomentumSq,mass,tempCalc)
-  if(correctTemperature /= 0 .AND. correctTemperature < abs(tempCalc/temp-1)) then
+  if(correctTemperature /= 0 .AND. correctTemperature < abs((tempCalc/temp)-1)) then
     momenta = momenta * sqrt(temp/tempCalc)
   end if
 
