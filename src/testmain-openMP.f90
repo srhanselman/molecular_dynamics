@@ -41,17 +41,17 @@ use md_plot
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! The program can be controlled using these switches:
-!  - correctTemperature contains either 0 or the temperature tolerance.
+!  - toleranceTemperature contains either 0 or the temperature tolerance.
 !  - constantPressure is 0 for an TVN system, or /=0 for a TPN system
 !  - check_heat_capacity and check_chemical_potential switch on tests after
 !      equilibration.
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-  real:: correctTemperature, constantPressure
+  real:: toleranceTemperature, constantPressure
   logical:: checkHeatCapacity, checkChemicalPotential
 
   constantPressure = 0 !Pressure is in eps/rm^3 = 29684667.9463 Pa
-  correctTemperature = 1d-2
+  toleranceTemperature = 1d-3
   checkHeatCapacity = .FALSE.
   checkChemicalPotential = .FALSE.
 
@@ -81,9 +81,9 @@ use md_plot
   cell_dim = 9 !This is the number of lattice spacings within the box;
                !the number of particles (N) is 4/uc times cell_dim translational copies
   nTimeStepsEquilibration = 1500
-  nTimeStepsRun = 250
+  nTimeStepsRun = 300
   nTimeStepsTempStep = 600
-  nTimeStepsTempStepRun = 250
+  nTimeStepsTempStepRun = 300
   
   N = 4*cell_dim**3
   boxLength = cell_dim*lattice_constant
@@ -118,7 +118,7 @@ use md_plot
   open(unit = 2, file="run.csv")
   open(unit = 3, file="statistics-values.csv")
   open(unit = 4, file="statistics-gradients.csv")
-  open(unit = 5, file="correlation.csv")
+  open(unit = 7, file="correlation.csv")
 
   if (checkHeatCapacity) then
     open(unit=10, file="heatcapacity.csv")
@@ -147,7 +147,7 @@ use md_plot
   write (1,*) "The system contains ", N, " particles."
   write (2,*) "The system contains ", N, " particles."
   call calculate_temperature(particleKineticEnergy,meanMomentumSq,mass,tempCalc)
-  if((correctTemperature /= 0) .AND. (correctTemperature < abs(tempCalc/temp-1))) then
+  if((toleranceTemperature /= 0) .AND. (toleranceTemperature < abs(tempCalc/temp-1))) then
     momenta = momenta * sqrt(temp/tempCalc)
   end if
 
@@ -208,24 +208,16 @@ if (constantPressure == 0) then
     call calculate_temperature(particleKineticEnergy,meanMomentumSq,mass,tempCalc)
     call momentum_balancer(momenta,N)
     call calculate_pressure(pos,force,boxLength,N,tempCalc,pressure)
-    write (1,*) counter*timeStep,"",kineticEnergyAfterStep,"",potentialEnergyAfterStep, &
- ";",kineticEnergyAfterStep+potentialEnergyAfterStep,"",tempCalc,"",meanMomentumSq, &
- ";",pressure,"",abs((tempCalc/temp)-1)
-    
-    runTempCalc(statisticsIndex,counter) = tempCalc
-    runKineticEnergy(statisticsIndex,counter) = kineticEnergyAfterStep
-    runPotentialEnergy(statisticsIndex,counter) = potentialEnergyAfterStep
-    runPressure(statisticsIndex,counter) = pressure
-    runVolume(statisticsIndex,counter) = boxLength*boxLength*boxLength
+    write (1,*) counter*timeStep,";",kineticEnergyAfterStep,";",potentialEnergyAfterStep, &
+ ";",kineticEnergyAfterStep+potentialEnergyAfterStep,";",tempCalc,";",meanMomentumSq, &
+ ";",pressure,";",abs((tempCalc/temp)-1)
 
-    if(correctTemperature /= 0 .AND. (correctTemperature < abs(tempCalc/temp-1))) then
+    if(toleranceTemperature /= 0 .AND. (toleranceTemperature < abs(tempCalc/temp-1))) then
       momenta = momenta * sqrt(temp/tempCalc)
     end if
+
   end do
-  
-  call printValueStatistics(runTemp(statisticsIndex,:),runTempCalc(statisticsIndex,:), &
- runKineticEnergy(statisticsIndex,:),runPotentialEnergy(statisticsIndex,:),runPressure(statisticsIndex,:), &
- runVolume(statisticsIndex,:))
+
 correlation = 0
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -243,11 +235,18 @@ if(nTimeStepsTempStep == 0) then
     call momentum_balancer(momenta,N)
     call calculate_pressure(pos,force,boxLength,N,tempCalc,pressure)
 
-    write (2,*) counter*timeStep,"",kineticEnergyAfterStep,"",potentialEnergyAfterStep, &
- ";",kineticEnergyAfterStep+potentialEnergyAfterStep,"",tempCalc,"",meanMomentumSq, &
+    
+    runTempCalc(statisticsIndex,counter) = tempCalc
+    runKineticEnergy(statisticsIndex,counter) = kineticEnergyAfterStep
+    runPotentialEnergy(statisticsIndex,counter) = potentialEnergyAfterStep
+    runPressure(statisticsIndex,counter) = pressure
+    runVolume(statisticsIndex,counter) = boxLength*boxLength*boxLength
+
+    write (2,*) counter*timeStep,";",kineticEnergyAfterStep,";",potentialEnergyAfterStep, &
+ ";",kineticEnergyAfterStep+potentialEnergyAfterStep,";",tempCalc,";",meanMomentumSq, &
  ";",pressure
   end do
-  write (5,*) "Correlation function: ", correlation
+  write (7,*) "Correlation function: ", correlation
 else
  do while (temp < FinalTemp+5d-1)
 !$omp parallel do schedule(static,1) shared(nTimeStepsTempStep,boxLength,maxForceDistance, &
@@ -257,10 +256,11 @@ else
 !$omp&  statisticsIndex) lastprivate(pos,momenta,force,temp,statisticsIndex)
    do innerCounter=1,nThreads
 !!!!!!!!!!!!!! BEGIN OF EQUILIBRATION !!!!!!!!!!!!!
-!$omp flush
+   !$omp flush
     temp=temp+innerCounter*tempStep
     statisticsIndex = mod(statisticsIndex+innerCounter-1,2+nThreads)+1
-    
+    print *, "Statistics index: ", statisticsIndex, " at temperature ", temp
+
     do counter=1,nTimeStepsTempStep
      call verlet_eqs_of_motion_correlation(pos,momenta,force,boxLength,maxForceDistance, &
       rm,bondingEnergy,mass,timeStep,meanMomentumSq,particleKineticEnergy, &
@@ -269,20 +269,14 @@ else
      call momentum_balancer(momenta,N)
      call calculate_pressure(pos,force,boxLength,N,tempCalc,pressure)
      
-     runTemp(statisticsIndex,counter) = temp
-     runTempCalc(statisticsIndex,counter) = tempCalc
-     runKineticEnergy(statisticsIndex,counter) = kineticEnergyAfterStep
-     runPotentialEnergy(statisticsIndex,counter) = potentialEnergyAfterStep
-     runPressure(statisticsIndex,counter) = pressure
-     runVolume(statisticsIndex,counter) = boxLength*boxLength*boxLength
 
-!$omp CRITICAL
-     write (1,*) counter,"",kineticEnergyAfterStep,"",potentialEnergyAfterStep, &
-   ";",kineticEnergyAfterStep+potentialEnergyAfterStep,"",tempCalc,"",temp,"", &
-   meanMomentumSq,"",pressure
+   !$omp CRITICAL
+     write (1,*) counter,";",kineticEnergyAfterStep,";",potentialEnergyAfterStep, &
+   ";",kineticEnergyAfterStep+potentialEnergyAfterStep,";",tempCalc,";",temp,";", &
+   meanMomentumSq,";",pressure
 !$omp END CRITICAL
 
-     if(correctTemperature /= 0 .AND. correctTemperature < abs(tempCalc/temp-1)) then
+     if(toleranceTemperature /= 0 .AND. toleranceTemperature < abs(tempCalc/temp-1)) then
        momenta = momenta * sqrt(temp/tempCalc)
      end if
     end do
@@ -295,21 +289,28 @@ else
      call calculate_temperature(particleKineticEnergy,meanMomentumSq,mass,tempCalc)
      call momentum_balancer(momenta,N)
      call calculate_pressure(pos,force,boxLength,N,tempCalc,pressure)
-!$omp CRITICAL
-     write (2,*) counter,"",kineticEnergyAfterStep,"",potentialEnergyAfterStep, &
-   ";",kineticEnergyAfterStep+potentialEnergyAfterStep,"",tempCalc,"",temp,"", &
-   meanMomentumSq,"",pressure
-!$omp END CRITICAL
+   !$omp CRITICAL
+     write (2,*) counter,";",kineticEnergyAfterStep,";",potentialEnergyAfterStep, &
+   ";",kineticEnergyAfterStep+potentialEnergyAfterStep,";",tempCalc,";",temp,";", &
+   meanMomentumSq,";",pressure
+   !$omp END CRITICAL
    end do
 
-!$omp CRITICAL
-   write (5,*) "Correlation function at temperature ", temp, ": ", correlation
+     runTemp(statisticsIndex,counter) = temp
+     runTempCalc(statisticsIndex,counter) = tempCalc
+     runKineticEnergy(statisticsIndex,counter) = kineticEnergyAfterStep
+     runPotentialEnergy(statisticsIndex,counter) = potentialEnergyAfterStep
+     runPressure(statisticsIndex,counter) = pressure
+     runVolume(statisticsIndex,counter) = boxLength*boxLength*boxLength
+
+  !$omp CRITICAL
+   write (7,*) "Correlation function at temperature ", temp, ": ", correlation
    call printValueStatistics(runTemp(statisticsIndex,:),runTempCalc(statisticsIndex,:), &
  runKineticEnergy(statisticsIndex,:),runPotentialEnergy(statisticsIndex,:),runPressure(statisticsIndex,:), &
  runVolume(statisticsIndex,:))
 !   call printGradientStatistics(runTemp,statisticsIndex,runTempCalc,runKineticEnergy,runPotentialEnergy, &
 ! runPressure,runVolume)
-!$omp END CRITICAL
+  !$omp END CRITICAL
   end do
 !$omp end parallel do
  end do
@@ -361,10 +362,10 @@ else if (constantPressure > 0) then
     call calculate_temperature(particleKineticEnergy,meanMomentumSq,mass,tempCalc)
     call momentum_balancer(momenta,N)
     call calculate_pressure(pos,force,boxLength,N,tempCalc,pressure)
-    write (1,*) counter,"",kineticEnergyAfterStep,"",potentialEnergyAfterStep, &
- ";",kineticEnergyAfterStep+potentialEnergyAfterStep,"",tempCalc,"",meanMomentumSq, &
- ";",pressure,"",boxLength,"",boxLength**(3d0)
-    if(correctTemperature /= 0 .AND. (correctTemperature < abs(tempCalc/temp-1))) then
+    write (1,*) counter,";",kineticEnergyAfterStep,";",potentialEnergyAfterStep, &
+ ";",kineticEnergyAfterStep+potentialEnergyAfterStep,";",tempCalc,";",meanMomentumSq, &
+ ";",pressure,";",boxLength,";",boxLength**(3d0)
+    if(toleranceTemperature /= 0 .AND. (toleranceTemperature < abs(tempCalc/temp-1))) then
       momenta = momenta * sqrt(temp/tempCalc)
     end if
   end do
@@ -382,11 +383,11 @@ if(nTimeStepsTempStep == 0) then
     call calculate_temperature(particleKineticEnergy,meanMomentumSq,mass,tempCalc)
     call momentum_balancer(momenta,N)
     call calculate_pressure(pos,force,boxLength,N,tempCalc,pressure)
-    write (2,*) counter*timeStep,"",kineticEnergyAfterStep,"",potentialEnergyAfterStep, &
- ";",kineticEnergyAfterStep+potentialEnergyAfterStep,"",tempCalc,"",meanMomentumSq, &
- ";",pressure,"",boxLength,"",boxLength**(3d0)    
+    write (2,*) counter*timeStep,";",kineticEnergyAfterStep,";",potentialEnergyAfterStep, &
+ ";",kineticEnergyAfterStep+potentialEnergyAfterStep,";",tempCalc,";",meanMomentumSq, &
+ ";",pressure,";",boxLength,";",boxLength**(3d0)    
   end do
-  write (5,*) "Correlation function: ", correlation
+  write (7,*) "Correlation function: ", correlation
 else
  do while (temp < FinalTemp+5d-1)
 !$omp parallel do schedule(static,1) shared(nTimeStepsTempStep,maxForceDistance, &
@@ -412,11 +413,11 @@ else
      call momentum_balancer(momenta,N)
      call calculate_pressure(pos,force,boxLength,N,tempCalc,pressure)
 !$omp CRITICAL
-    write (1,*) counter*timeStep,"",kineticEnergyAfterStep,"",potentialEnergyAfterStep, &
- ";",kineticEnergyAfterStep+potentialEnergyAfterStep,"",tempCalc,"",meanMomentumSq, &
- ";",pressure,"",boxLength,"",boxLength**(3d0)
+    write (1,*) counter*timeStep,";",kineticEnergyAfterStep,";",potentialEnergyAfterStep, &
+ ";",kineticEnergyAfterStep+potentialEnergyAfterStep,";",tempCalc,";",meanMomentumSq, &
+ ";",pressure,";",boxLength,";",boxLength**(3d0)
 !$omp END CRITICAL
-     if(correctTemperature /= 0 .AND. (correctTemperature < abs(tempCalc/temp-1))) then
+     if(toleranceTemperature /= 0 .AND. (toleranceTemperature < abs(tempCalc/temp-1))) then
        momenta = momenta * sqrt(temp/tempCalc)
      end if
     end do
@@ -430,13 +431,13 @@ else
      call momentum_balancer(momenta,N)
      call calculate_pressure(pos,force,boxLength,N,tempCalc,pressure)
 !$omp CRITICAL
-    write (2,*) counter*timeStep,"",kineticEnergyAfterStep,"",potentialEnergyAfterStep, &
- ";",kineticEnergyAfterStep+potentialEnergyAfterStep,"",tempCalc,"",meanMomentumSq, &
- ";",pressure,"",boxLength,"",boxLength**(3d0)
+    write (2,*) counter*timeStep,";",kineticEnergyAfterStep,";",potentialEnergyAfterStep, &
+ ";",kineticEnergyAfterStep+potentialEnergyAfterStep,";",tempCalc,";",meanMomentumSq, &
+ ";",pressure,";",boxLength,";",boxLength**(3d0)
 !$omp END CRITICAL
    end do
 !$omp CRITICAL
-   write (5,*) "Correlation function at temperature ", temp, ": ", correlation
+   write (7,*) "Correlation function at temperature ", temp, ": ", correlation
 !$omp END CRITICAL
   end do
 !$omp end parallel do
@@ -460,7 +461,7 @@ end if
   close(2)
   close(3)
   close(4)
-  close(5)
+  close(7)
   if (checkHeatCapacity) then
     close(10)
   end if

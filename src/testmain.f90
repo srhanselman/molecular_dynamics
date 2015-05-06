@@ -181,8 +181,9 @@ if (constantPressure == 0) then
     if(correctTemperature /= 0 .AND. correctTemperature < abs(tempCalc/temp)-1) then
       momenta = momenta * sqrt(temp/tempCalc)
     end if
+  print *, "Step", counter
   end do
-
+print *, "Finished equilibration"
 correlation = 0
 
 if(nTimeStepsTempStep == 0) then

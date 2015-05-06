@@ -1,0 +1,50 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+module UpdateStatistics
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+implicit none
+private
+
+public printValueStatistics
+public printGradientStatistics
+
+
+contains
+
+
+
+subroutine printValueStatistics(runTemp,runTempCalc,runKineticEnergy,runPotentialEnergy,runPressure,runVolume)
+
+! A void function which only prints the values, stdevs and covariances with temperature
+! of thermodynamical properties.
+	real*8, intent(in):: runTempCalc(:),runKineticEnergy(:),runPotentialEnergy(:), &
+ runPressure(:),runVolume(:)
+	real*8 :: meanTempCalc,stdevTempCalc,meanKineticEnergy,stdevKineticEnergy, &
+ covKineticEnergy,meanPotentialEnergy,stdevPotentialEnergy,meanPressure,stdevPressure, &
+ covPressure, meanVolume,stdevVolume,covVolume
+	integer :: N
+
+	N = size(runVolume)
+	
+	meanTempCalc = sum(runTempCalc)/N
+	meanKineticEnergy = sum(runKineticEnergy)/N
+	meanPotentialEnergy = sum(runPotentialEnergy)/N
+	meanPressure = sum(runPressure)/N
+	meanVolume = sum(runVolume)/N
+
+	stdevTempCalc = dot_product(runTempCalc)/N - meanTempCalc*meanTempCalc
+	stdevKineticEnergy = dot_product(runKineticEnergy)/N - &
+ meanKineticEnergy*meanKineticEnergy
+	stdevPotentialEnergy = dot_product(runPotentialEnergy)/N - &
+ meanPotentialEnergy*meanPotentialEnergy
+	stdevTo
+	
+
+	
+
+
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+end module UpdateStatistics
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
